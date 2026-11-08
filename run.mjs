@@ -6,7 +6,7 @@ import { readFile } from 'node:fs/promises';
 import { LIGHT_MODELS, askJson } from './gemini.mjs';
 import { findPapers, mythNotes, notesFrom, researchBeliefs } from './sources.mjs';
 import { findPhoto } from './photos.mjs';
-import { commentOn, sharePost, wentOut } from './social.mjs';
+import { checkToken, commentOn, sharePost, wentOut } from './social.mjs';
 import { pingIndexNow } from './indexnow.mjs';
 import { EDU, MYTH, beliefProblem, isDue, plainWords, slugsFromLlms, styleFor, validatePost, MIN_WORDS, MAX_WORDS } from './validate.mjs';
 
@@ -280,6 +280,11 @@ async function shareWaiting() {
 }
 
 async function main() {
+  // CHECK_FACEBOOK (the workflow's "Check the Facebook token" input): test META_PAGE_TOKEN, post nothing.
+  if (process.env.CHECK_FACEBOOK === 'true') {
+    for (const line of await checkToken()) console.log(line);
+    return;
+  }
   if (!site || !token || !process.env.GEMINI_API_KEY) throw new Error('Set SITE_URL, BLOG_AUTOMATION_TOKEN and GEMINI_API_KEY');
 
   const system = await readFile(new URL('./prompt.md', import.meta.url), 'utf8');

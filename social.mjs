@@ -141,3 +141,44 @@ export async function commentOn(ids, url, { token = process.env.META_PAGE_TOKEN,
   }
   return out;
 }
+
+// What sharing needs from the token (the six permissions picked when making it).
+export const NEEDED_PERMISSIONS = ['pages_manage_posts', 'pages_read_engagement', 'pages_manage_engagement', 'instagram_basic', 'instagram_content_publish', 'instagram_manage_comments'];
+
+/**
+ * Checks META_PAGE_TOKEN without posting anything: which Page and Instagram account it reaches, whether it
+ * expires and which permissions are missing. Returns lines to print; throws when the token can't be used at all.
+ */
+export async function checkToken({ token = process.env.META_PAGE_TOKEN, fetchFn = fetch } = {}) {
+  if (!token) throw new Error('META_PAGE_TOKEN is not set');
+  const { page, pageToken } = await resolvePage(token, fetchFn);
+  const lines = [`Facebook Page: ${page.name} (${page.id})`];
+  const problems = [];
+
+  const igId = page.instagram_business_account?.id;
+  if (!igId) problems.push('no Instagram professional account is linked to this Page, so posts go to Facebook only');
+  else {
+    try {
+      const ig = await graph(`/${igId}`, { token: pageToken, fetchFn, params: { fields: 'username' } });
+      lines.push(`Instagram: @${ig.username}`);
+    } catch (err) {
+      problems.push(`the linked Instagram account can't be read (${err.message})`);
+    }
+  }
+
+  try {
+    const info = (await graph('/debug_token', { token: pageToken, fetchFn, params: { input_token: pageToken } })).data ?? {};
+    lines.push(`Token type: ${info.type ?? 'unknown'}`);
+    if (info.is_valid === false) problems.push('Facebook says the token is no longer valid; make a new one');
+    const expires = info.expires_at ? new Date(info.expires_at * 1000) : null;
+    lines.push(`Expires: ${expires ? expires.toISOString().slice(0, 10) : 'never'}`);
+    if (expires) problems.push(`the token expires on ${expires.toISOString().slice(0, 10)}; a Page token made from an extended token never expires`);
+    const missing = NEEDED_PERMISSIONS.filter((p) => !(info.scopes ?? []).includes(p));
+    if (missing.length) problems.push(`missing permissions: ${missing.join(', ')}`);
+  } catch (err) {
+    lines.push(`Permissions: not checked (${err.message})`);
+  }
+
+  lines.push(problems.length ? `Problems: ${problems.join('; ')}.` : 'All good: new posts will be shared to Facebook and Instagram.');
+  return lines;
+}
