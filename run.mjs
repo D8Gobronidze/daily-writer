@@ -6,7 +6,7 @@ import { readFile } from 'node:fs/promises';
 import { LIGHT_MODELS, askJson } from './gemini.mjs';
 import { findPapers, mythNotes, notesFrom, researchBeliefs } from './sources.mjs';
 import { findPhoto } from './photos.mjs';
-import { checkToken, commentOn, sharePost, wentOut } from './social.mjs';
+import { checkToken, commentOn, deletePosts, sharePost, wentOut } from './social.mjs';
 import { pingIndexNow } from './indexnow.mjs';
 import { EDU, MYTH, beliefProblem, isDue, plainWords, seasonFor, seasonNote, slugsFromLlms, styleFor, validatePost, MIN_WORDS, MAX_WORDS } from './validate.mjs';
 
@@ -302,6 +302,13 @@ async function main() {
     const { url } = JSON.parse(await siteFetch(`/api/posts/${encodeURIComponent(slug)}`));
     console.log(`Comments: ${JSON.stringify(await commentOn(commentIds, url))}`);
     return;
+  }
+  // DELETE_POSTS (the workflow's "Delete posts" input): remove posts first; with SHARE_SLUG the post is then shared again.
+  const deleteIds = (process.env.DELETE_POSTS ?? '').trim();
+  if (deleteIds) {
+    const deleted = await deletePosts(deleteIds);
+    console.log(`Deleted: ${JSON.stringify(deleted)}`);
+    if (Object.values(deleted).some((v) => v.startsWith('failed'))) throw new Error('A post could not be deleted; nothing was shared again.');
   }
   // SHARE_SLUG (the workflow's "Share a post" input): share one existing post now, write nothing.
   const shareSlug = (process.env.SHARE_SLUG ?? '').trim().replace(/^.*\/blog\//, '').replace(/\/+$/, '');
