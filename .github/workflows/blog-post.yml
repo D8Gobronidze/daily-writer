@@ -7,6 +7,10 @@ name: Blog post (AI)
 on:
   workflow_dispatch:
     inputs:
+      check_facebook:
+        description: "Only check the Facebook token (which Page and Instagram it reaches, expiry, permissions); posts nothing"
+        type: boolean
+        default: false
       redo_photos:
         description: "Re-pick the photos the automation chose (photos you set yourself are kept)"
         type: boolean
@@ -83,6 +87,7 @@ jobs:
           COMMENT_ON: ${{ inputs.comment_on }}
           REWRITE_NOTE: ${{ inputs.rewrite_note }}
           META_PAGE_TOKEN: ${{ secrets.META_PAGE_TOKEN }}
+          CHECK_FACEBOOK: ${{ inputs.check_facebook }}
           # Every scheduled try but the last one of the day may leave the post to the next try.
           LATER_TRY: ${{ github.event_name == 'schedule' && github.event.schedule != '17 20 * * *' }}
         run: node run.mjs

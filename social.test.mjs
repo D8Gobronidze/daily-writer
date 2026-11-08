@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { AD_NOTE, commentOn, facebookMessage, instagramCaption, sharePost, wentOut } from './social.mjs';
+import { AD_NOTE, NEEDED_PERMISSIONS, checkToken, commentOn, facebookMessage, instagramCaption, sharePost, wentOut } from './social.mjs';
 
 const post = {
   title: 'Omega-3 and your heart',
@@ -29,6 +29,8 @@ function meta({ ig = '178', statuses = ['IN_PROGRESS', 'FINISHED'], fail = {} } 
     if (path === '/615_1/comments') return json({ id: 'fbc_1' });
     if (path === '/ig_1/comments') return json({ id: 'igc_1' });
     if (path === '/615_9/comments') return json({ id: 'fbc_9' });
+    if (path === `/${ig}`) return json({ id: ig, username: 'wellzz.app' });
+    if (path === '/debug_token') return json({ data: { type: 'PAGE', expires_at: 0, scopes: params.access_token === 'p-wellzz' ? NEEDED_PERMISSIONS : ['pages_manage_posts'] } });
     return json({ error: { message: 'unexpected ' + path } }, 404);
   };
   return { calls, fetchFn };
@@ -139,11 +141,30 @@ test('comment only: the first comment is added to posts that are already out', a
   const out = await commentOn('facebook:615_9 instagram:ig_1', 'https://wellzz.app/blog/omega-3/', { token: 'user', fetchFn: m.fetchFn });
   assert.equal(out.facebook, 'fbc_9');
   assert.equal(out.instagram, 'igc_1');
-  assert.match(String(out.token), /^unknown/);
+  assert.equal(out.token.type, 'PAGE');
   const c = m.calls.find((x) => x.path === '/615_9/comments');
   assert.equal(c.params.message, '📖 Read the full post: https://wellzz.app/blog/omega-3/');
   assert.equal(c.params.access_token, 'p-wellzz');
   assert.ok(!m.calls.some((x) => x.path.endsWith('/feed') || x.path.endsWith('/media')), 'nothing is posted');
   assert.deepEqual(await commentOn('', 'https://x.test/', { token: 'user', fetchFn: m.fetchFn }), {});
   assert.match((await commentOn('twitter:1', 'https://x.test/', { token: 'user', fetchFn: m.fetchFn })).twitter, /unknown network/);
+});
+
+test('the token check reports the Page, Instagram and permissions without posting', async () => {
+  const m = meta();
+  const lines = await checkToken({ token: 'user', fetchFn: m.fetchFn });
+  assert.deepEqual(lines, ['Facebook Page: Wellzz (615)', 'Instagram: @wellzz.app', 'Token type: PAGE', 'Expires: never', 'All good: new posts will be shared to Facebook and Instagram.']);
+  assert.ok(m.calls.every((c) => c.method === 'GET'));
+});
+
+test('the token check lists missing permissions and a missing Instagram link', async () => {
+  const m = meta({ ig: null });
+  const lines = await checkToken({ token: 'page', fetchFn: m.fetchFn });
+  assert.match(lines.at(-1), /no Instagram professional account/);
+  assert.match(lines.at(-1), /missing permissions: pages_read_engagement/);
+});
+
+test('the token check fails on a token Facebook rejects', async () => {
+  const m = meta({ fail: { '/me': 'Invalid OAuth access token' } });
+  await assert.rejects(checkToken({ token: 'bad', fetchFn: m.fetchFn }), /Invalid OAuth access token/);
 });
