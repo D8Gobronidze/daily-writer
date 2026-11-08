@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { AD_NOTE, NEEDED_PERMISSIONS, checkToken, commentOn, facebookMessage, instagramCaption, sharePost, wentOut } from './social.mjs';
+import { AD_NOTE, NEEDED_PERMISSIONS, checkToken, commentOn, deletePosts, facebookMessage, instagramCaption, sharePost, wentOut } from './social.mjs';
 
 process.env.SITE_URL = 'https://example.com';
 
@@ -24,6 +24,8 @@ function meta({ ig = '178', statuses = ['IN_PROGRESS', 'FINISHED'], fail = {} } 
     if (fail[path]) return json({ error: { message: fail[path] } }, 400);
     if (path === '/me/accounts') return params.access_token === 'user' ? json({ data: [{ id: '999', name: 'Other page', access_token: 'p-other' }, { id: '615', name: 'Example', access_token: 'p-example', ...(ig ? { instagram_business_account: { id: ig } } : {}) }] }) : json({ error: { message: 'nonexisting field (accounts) on node type (Page)' } }, 400);
     if (path === '/me') return json({ id: '615', name: 'Example', ...(ig ? { instagram_business_account: { id: ig } } : {}) });
+    if (path === '/') return json({ id: params.id });
+    if (path === '/615_7' && init.method === 'DELETE') return json({ success: true });
     if (path === '/615/feed') return json({ id: '615_1' });
     if (path === `/${ig}/media`) return json({ id: 'c1' });
     if (path === '/c1') return json({ status_code: statuses.shift() ?? 'FINISHED' });
@@ -169,4 +171,19 @@ test('the token check lists missing permissions and a missing Instagram link', a
 test('the token check fails on a token Facebook rejects', async () => {
   const m = meta({ fail: { '/me': 'Invalid OAuth access token' } });
   await assert.rejects(checkToken({ token: 'bad', fetchFn: m.fetchFn }), /Invalid OAuth access token/);
+});
+
+test('Facebook re-reads the link before posting, so a newer photo shows', async () => {
+  const m = meta();
+  await sharePost({ title: 'T', summary: 'S', url: 'https://example.com/blog/x/', imageUrl: null, tags: [] }, { token: 'page', fetchFn: m.fetchFn, wait: async () => {} });
+  const i = m.calls.findIndex((c) => c.path === '/' && c.params.scrape === 'true' && c.params.id === 'https://example.com/blog/x/');
+  assert.ok(i >= 0 && i < m.calls.findIndex((c) => c.path === '/615/feed'));
+});
+
+test('deletePosts removes Facebook posts and reports the rest', async () => {
+  const m = meta({ fail: { '/615_8': 'gone' } });
+  const out = await deletePosts('facebook:615_7 facebook:615_8 instagram:ig_1', { token: 'user', fetchFn: m.fetchFn });
+  assert.deepEqual(out, { 'facebook:615_7': 'deleted', 'facebook:615_8': 'failed: Meta DELETE /615_8 → gone', 'instagram:ig_1': 'skipped: delete it in the Instagram app' });
+  assert.equal(m.calls.find((c) => c.path === '/615_7').params.access_token, 'p-example');
+  assert.deepEqual(await deletePosts('  ', { token: 'user', fetchFn: m.fetchFn }), {});
 });

@@ -37,6 +37,10 @@ on:
         description: "With 'Share an existing post': only add the first comment to these posts, e.g. facebook:123_456 instagram:789"
         type: string
         default: ""
+      delete_posts:
+        description: "Delete these Page posts first, e.g. facebook:123_456 (with 'Share an existing post': share it again after)"
+        type: string
+        default: ""
       rewrite_slug:
         description: "Rewrite a post this automation wrote, same address and photo, not shared again (its address, e.g. example.com/blog/some-post/)"
         type: string
@@ -85,6 +89,7 @@ jobs:
           POST_STYLE: ${{ inputs.post_style != 'auto' && inputs.post_style || '' }}
           REWRITE_SLUG: ${{ inputs.rewrite_slug }}
           COMMENT_ON: ${{ inputs.comment_on }}
+          DELETE_POSTS: ${{ inputs.delete_posts }}
           REWRITE_NOTE: ${{ inputs.rewrite_note }}
           META_PAGE_TOKEN: ${{ secrets.META_PAGE_TOKEN }}
           CHECK_FACEBOOK: ${{ inputs.check_facebook }}

@@ -7,8 +7,8 @@ const GRAPH = 'https://graph.facebook.com/v26.0';
 async function graph(path, { token, fetchFn, method = 'GET', params = {} }) {
   const url = new URL(`${GRAPH}${path}`);
   const body = new URLSearchParams({ ...params, access_token: token });
-  const res = method === 'GET'
-    ? await fetchFn(`${url}?${body}`)
+  const res = method === 'GET' || method === 'DELETE'
+    ? await fetchFn(`${url}?${body}`, method === 'DELETE' ? { method } : undefined)
     : await fetchFn(url, { method, body });
   const data = await res.json().catch(() => ({}));
   if (!res.ok || data.error) throw new Error(`Meta ${method} ${path} → ${data.error?.message ?? `HTTP ${res.status}`}`);
@@ -86,6 +86,9 @@ export async function sharePost(post, { token = process.env.META_PAGE_TOKEN, fet
 
   if (only === 'instagram') out.facebook = 'skipped: Instagram only';
   else try {
+    // Facebook caches a link's preview (title, photo): have it read the page again first, so a post
+    // that got its photo after an earlier share shows the new one. Best effort.
+    await graph('/', { ...opts, method: 'POST', params: { id: post.url, scrape: 'true' } }).catch(() => {});
     const fb = await graph(`/${page.id}/feed`, { ...opts, method: 'POST', params: { message: facebookMessage(post), link: post.url } });
     out.facebook = fb.id;
     comments.facebook = await comment(fb.id, post, opts);
@@ -141,6 +144,29 @@ export async function commentOn(ids, url, { token = process.env.META_PAGE_TOKEN,
     out[network] = ['facebook', 'instagram'].includes(network) && id
       ? await comment(id, { url }, { token: pageToken, fetchFn })
       : `skipped: unknown network "${network}"`;
+  }
+  return out;
+}
+
+// "Delete posts" (the workflow's delete_posts input, e.g. "facebook:123_456 instagram:789"): removes posts
+// the Page made, e.g. one shared before its photo was ready. Instagram's API can't delete posts: those
+// are reported, to delete in the app. Returns what happened per id.
+export async function deletePosts(ids, { token = process.env.META_PAGE_TOKEN, fetchFn = fetch } = {}) {
+  const pairs = String(ids).trim().split(/\s+/).filter(Boolean).map((x) => x.split(':'));
+  if (!pairs.length) return {};
+  const { pageToken } = await resolvePage(token, fetchFn);
+  const out = {};
+  for (const [network, id] of pairs) {
+    if (network === 'instagram') out[`instagram:${id}`] = 'skipped: delete it in the Instagram app';
+    else if (network !== 'facebook' || !id) out[`${network}:${id}`] = `skipped: unknown network "${network}"`;
+    else {
+      try {
+        await graph(`/${id}`, { token: pageToken, fetchFn, method: 'DELETE' });
+        out[`facebook:${id}`] = 'deleted';
+      } catch (err) {
+        out[`facebook:${id}`] = `failed: ${err.message}`;
+      }
+    }
   }
   return out;
 }
