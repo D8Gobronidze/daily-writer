@@ -8,6 +8,7 @@ import { findPapers, mythNotes, notesFrom, researchBeliefs } from './sources.mjs
 import { findPhoto } from './photos.mjs';
 import { checkToken, commentOn, deletePosts, sharePost, wentOut } from './social.mjs';
 import { pingIndexNow } from './indexnow.mjs';
+import { QUIZ_SCHEMA, QUIZ_SYSTEM, builtInTopics, isQuizDue, quizPayload, quizProblems, quizPrompt, quizShare } from './quiz.mjs';
 import { EDU, MYTH, beliefProblem, isDue, plainWords, seasonFor, seasonNote, slugsFromLlms, styleFor, validatePost, MIN_WORDS, MAX_WORDS } from './validate.mjs';
 
 const MIN_PAPERS = 4;
@@ -283,6 +284,59 @@ async function shareWaiting() {
   }
 }
 
+// Published Health IQ tests whose share time has come (the site decides: Wednesday 9 AM Eastern). Never fails the run.
+async function shareQuizzes() {
+  if (!process.env.META_PAGE_TOKEN) return;
+  try {
+    const { quizzes } = JSON.parse(await siteFetch('/api/automation/quizzes/unshared'));
+    for (const q of quizzes) {
+      const result = await sharePost(quizShare(q));
+      console.log(`Shared Health IQ test ${q.slug}: ${JSON.stringify(result)}`);
+      if (wentOut(result)) await siteFetch(`/api/automation/quizzes/${encodeURIComponent(q.slug)}/shared`, { method: 'PUT', body: '{}' });
+    }
+  } catch (err) {
+    console.log(`Sharing Health IQ tests skipped: ${err instanceof Error ? err.message : err}`);
+  }
+}
+
+// Once a week (from Monday, US Eastern): write a new Health IQ test and save it as a draft for the owner to
+// review and publish in Admin → Health IQ. A busy Gemini or a failed check just leaves it to the next try.
+async function weeklyQuiz() {
+  try {
+    const { quizzes, usedSources } = JSON.parse(await siteFetch('/api/automation/quizzes'));
+    if (!isQuizDue(quizzes, new Date())) return;
+    const quizzesPage = await fetch(`${site}/quizzes/`).then((r) => (r.ok ? r.text() : ''), () => '');
+    const topics = [...builtInTopics(quizzesPage), ...quizzes.map((q) => q.title)];
+    const posts = JSON.parse(await siteFetch('/api/posts?limit=30')).map((p) => ({ slug: p.slug, title: p.title }));
+    let prompt = quizPrompt({ topics, posts });
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      console.log(`Writing this week's Health IQ test (attempt ${attempt})…`);
+      const quiz = await askJson({ system: QUIZ_SYSTEM, schema: QUIZ_SCHEMA, prompt });
+      const problems = quizProblems(quiz);
+      if (problems.length) {
+        console.log(`  Not usable: ${problems.join('; ')}`);
+        prompt += `\n\nYour last test had these problems, fix them: ${problems.join('; ')}`;
+        continue;
+      }
+      const body = quizPayload(quiz, posts.map((p) => p.slug));
+      if (process.env.PIXABAY_API_KEY) {
+        try {
+          const photo = await findPhoto(quiz.photoQueries, { used: [...usedSources], choose: chooser({ slug: quiz.slug, title: quiz.title, summary: quiz.intro }) });
+          if (photo) Object.assign(body, { image: photo.image, imageSource: photo.source });
+          console.log(photo ? `  Photo: "${photo.query}"` : '  No good photo match; it will go to Facebook only.');
+        } catch (err) {
+          console.log(`  No photo: ${err instanceof Error ? err.message : err}`);
+        }
+      }
+      const saved = JSON.parse(await siteFetch('/api/automation/quizzes', { method: 'POST', body: JSON.stringify(body) }));
+      console.log(`Health IQ test "${quiz.title}" is waiting for review: ${saved.admin}`);
+      return;
+    }
+  } catch (err) {
+    console.log(`Health IQ test skipped this try: ${err instanceof Error ? err.message : err}`);
+  }
+}
+
 async function main() {
   // CHECK_FACEBOOK (the workflow's "Check the Facebook token" input): test META_PAGE_TOKEN, post nothing.
   if (process.env.CHECK_FACEBOOK === 'true') {
@@ -317,6 +371,8 @@ async function main() {
     return;
   }
   await shareWaiting();
+  await shareQuizzes();
+  await weeklyQuiz();
 
   const { runs } = JSON.parse(await siteFetch('/api/automation/posts'));
 
