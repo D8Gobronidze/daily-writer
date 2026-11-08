@@ -200,3 +200,31 @@ export function slugsFromLlms(llms) {
   if (start < 0) return [];
   return [...llms.slice(start).matchAll(/\/blog\/([a-z0-9-]+)\/\)/g)].map((m) => m[1]);
 }
+
+// Seasonal posts: the first post in the 3 weeks before a US season starts (meteorological: Mar 1, Jun 1,
+// Sep 1, Dec 1) is about that season, so readers find it before they need it. One per season, never extra.
+export const SEASON_LEAD_DAYS = 21;
+const SEASONS = [
+  { name: 'spring', month: 2, ideas: 'spring allergy season, getting active again after winter, more sun on the skin, spring clean-eating trends' },
+  { name: 'summer', month: 5, ideas: 'sun and skin, heat and drinking enough water, electrolytes, summer travel and digestion, sleeping in the heat' },
+  { name: 'fall', month: 8, ideas: 'back to routines and sleep, shorter days and vitamin D, drier air and skin, getting ready for cold and flu season' },
+  { name: 'winter', month: 11, ideas: 'vitamin D when days are short, dry winter skin, holiday eating, staying active in the cold, winter mood and daylight' },
+];
+
+/** The season this post should be about, or null. `runs`: the automation's posts ({createdAt}). */
+export function seasonFor(runs, now) {
+  // Every 3-week window falls inside one calendar year (the earliest, spring's, opens on Feb 8).
+  for (const s of SEASONS) {
+    const start = Date.UTC(now.getUTCFullYear(), s.month, 1);
+    const windowStart = start - SEASON_LEAD_DAYS * DAY_MS;
+    if (now.getTime() < windowStart || now.getTime() >= start) continue;
+    if (runs.some((r) => Date.parse(r.createdAt) >= windowStart)) return null;
+    const days = Math.ceil((start - now.getTime()) / DAY_MS);
+    return { name: s.name, start: new Date(start).toISOString().slice(0, 10), days, ideas: s.ideas };
+  }
+  return null;
+}
+
+/** The instruction added to the prompts for a seasonal post. */
+export const seasonNote = (s) =>
+  `SEASONAL POST: ${s.name} starts in the US on ${s.start} (in ${s.days} days). This post must help readers get ready for ${s.name}: pick a topic tied to the season (ideas: ${s.ideas}), say "${s.name}" in the title, and explain why it matters at this time of year.`;

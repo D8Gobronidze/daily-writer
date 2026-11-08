@@ -8,7 +8,7 @@ import { findPapers, mythNotes, notesFrom, researchBeliefs } from './sources.mjs
 import { findPhoto } from './photos.mjs';
 import { checkToken, commentOn, sharePost, wentOut } from './social.mjs';
 import { pingIndexNow } from './indexnow.mjs';
-import { EDU, MYTH, beliefProblem, isDue, plainWords, slugsFromLlms, styleFor, validatePost, MIN_WORDS, MAX_WORDS } from './validate.mjs';
+import { EDU, MYTH, beliefProblem, isDue, plainWords, seasonFor, seasonNote, slugsFromLlms, styleFor, validatePost, MIN_WORDS, MAX_WORDS } from './validate.mjs';
 
 const MIN_PAPERS = 4;
 const site = (process.env.SITE_URL ?? '').replace(/\/+$/, '');
@@ -341,11 +341,14 @@ async function main() {
     return;
   }
 
-  const { context, llms } = await siteContext(runs);
+  const { context: siteNotes, llms } = await siteContext(runs);
 
   // POST_STYLE (workflow input) picks the style for this one run; otherwise every third post is a myth post.
   const style = ['myth', 'standard'].includes(process.env.POST_STYLE ?? '') ? process.env.POST_STYLE : styleFor(runs);
-  console.log(`Post #${runs.length + 1}: ${style}.`);
+  // The first post in the 3 weeks before a season starts is about that season (either style).
+  const season = seasonFor(runs, new Date());
+  const context = season ? `${siteNotes}\n\n${seasonNote(season)}` : siteNotes;
+  console.log(`Post #${runs.length + 1}: ${style}${season ? `, about ${season.name}` : ''}.`);
 
   await researchAndWrite({
     system, context, style,

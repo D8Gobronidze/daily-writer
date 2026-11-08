@@ -226,3 +226,22 @@ test('plainWords leaves other text and words without a safe swap alone', () => {
   assert.deepEqual(plainWords(post), []);
   assert.equal(post.body, 'This correlates with sleep. A cohort of adults.');
 });
+
+test('the first post in the 3 weeks before a season is about that season', async () => {
+  const { seasonFor, seasonNote } = await import('./validate.mjs');
+  const before = [{ createdAt: '2026-11-08T20:00:00Z' }];
+  // Nov 8: the winter window (from Nov 10) has not opened yet.
+  assert.equal(seasonFor(before, new Date('2026-11-08T21:00:00Z')), null);
+  // Nov 11, no post since the window opened: winter.
+  const s = seasonFor(before, new Date('2026-11-11T11:17:00Z'));
+  assert.deepEqual({ name: s.name, start: s.start, days: s.days }, { name: 'winter', start: '2026-12-01', days: 20 });
+  assert.match(seasonNote(s), /winter starts in the US on 2026-12-01/);
+  // Once a post went out in the window, the rest are ordinary.
+  assert.equal(seasonFor([...before, { createdAt: '2026-11-11T11:30:00Z' }], new Date('2026-11-14T11:17:00Z')), null);
+  // From Dec 1 the window is over.
+  assert.equal(seasonFor(before, new Date('2026-12-01T11:17:00Z')), null);
+  // Feb 10 is inside the spring window (spring starts Mar 1).
+  assert.equal(seasonFor([], new Date('2027-02-10T11:17:00Z')).name, 'spring');
+  // No posts at all yet: still seasonal inside a window.
+  assert.equal(seasonFor([], new Date('2026-08-20T11:17:00Z')).name, 'fall');
+});
