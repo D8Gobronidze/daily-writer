@@ -29,11 +29,14 @@ const hashtags = (p) => [...new Set([...(siteName() ? [`#${siteName()}`] : []), 
 // "https://example.com/blog/x/" → "example.com/blog/x": short enough to type from a phone.
 const shortUrl = (url) => String(url).replace(/^https?:\/\//, '').replace(/\/+$/, '');
 
-export const facebookMessage = (p) => [...adLine(p), p.title, '', p.summary, '', `Read it here: ${p.url}`, '', hashtags(p)].join('\n');
+// A weekly Health IQ test (kind: 'quiz') invites people to take it instead of reading.
+const isQuiz = (p) => p.kind === 'quiz';
+
+export const facebookMessage = (p) => [...adLine(p), p.title, '', p.summary, '', `${isQuiz(p) ? 'Take the quiz' : 'Read it here'}: ${p.url}`, '', hashtags(p)].join('\n');
 
 // Instagram never makes links in a caption clickable, so the post's address is written out in full.
 export const instagramCaption = (p) =>
-  [...adLine(p), p.title, '', p.summary, '', `Read the full post at ${shortUrl(p.url)} 🌿`, '', hashtags(p)].join('\n');
+  [...adLine(p), p.title, '', p.summary, '', isQuiz(p) ? `Take the quiz at ${shortUrl(p.url)} 🧠` : `Read the full post at ${shortUrl(p.url)} 🌿`, '', hashtags(p)].join('\n');
 
 // True when Facebook or Instagram published the post (an id, not "failed: …" or "skipped: …").
 export const wentOut = (result) => ['facebook', 'instagram'].some((k) => typeof result?.[k] === 'string' && !/^(failed|skipped)/.test(result[k]));
@@ -62,7 +65,7 @@ export async function resolvePage(token, fetchFn, name = process.env.META_PAGE_N
 
 // The first comment under each shared post: the link to the full post (pages often put it there;
 // on Facebook it's tappable). Needs pages_manage_engagement / instagram_manage_comments on the token.
-export const firstComment = (p) => `📖 Read the full post: ${p.url}`;
+export const firstComment = (p) => (isQuiz(p) ? `🧠 Take the quiz: ${p.url}` : `📖 Read the full post: ${p.url}`);
 
 // Comments under a just-published post; a failure is recorded, never thrown.
 async function comment(id, post, opts) {
