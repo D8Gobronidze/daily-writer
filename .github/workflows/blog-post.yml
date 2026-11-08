@@ -1,0 +1,100 @@
+name: Blog post (AI)
+
+# Checks four times a day (6:17 AM, 9:17 AM, 12:17 PM, 3:17 PM US Eastern in winter, an hour later in summer) and writes a new researched post when the last automated one is 3+ days old
+# (see run.mjs). Free: Gemini free tier + Europe PMC studies. Once the post is out, later tries
+# that day only check and stop (~15s). When the free services are busy, an earlier try stops quietly
+# and the next one writes the post; only the last try of the day fails (and emails).
+on:
+  workflow_dispatch:
+    inputs:
+      check_facebook:
+        description: "Only check the Facebook token (which Page and Instagram it reaches, expiry, permissions); posts nothing"
+        type: boolean
+        default: false
+      redo_photos:
+        description: "Re-pick the photos the automation chose (photos you set yourself are kept)"
+        type: boolean
+        default: false
+      publish_now:
+        description: "Write and publish a post now, even if the last one is less than 3 days old"
+        type: boolean
+        default: false
+      share_slug:
+        description: "Share an existing post to Facebook and Instagram now (its address, e.g. example.com/blog/some-post/)"
+        type: string
+        default: ""
+      share_only:
+        description: "With 'Share an existing post': share it to only one network (e.g. retry Instagram)"
+        type: choice
+        options: ["both", "instagram", "facebook"]
+        default: "both"
+      post_style:
+        description: "Style of this post (auto = every third post is Myth vs. truth)"
+        type: choice
+        options: ["auto", "myth", "standard"]
+        default: "auto"
+      comment_on:
+        description: "With 'Share an existing post': only add the first comment to these posts, e.g. facebook:123_456 instagram:789"
+        type: string
+        default: ""
+      rewrite_slug:
+        description: "Rewrite a post this automation wrote, same address and photo, not shared again (its address, e.g. example.com/blog/some-post/)"
+        type: string
+        default: ""
+      rewrite_note:
+        description: "With 'Rewrite a post': what to fix (optional)"
+        type: string
+        default: ""
+  schedule:
+    - cron: "17 11 * * *"
+    - cron: "17 14 * * *"
+    - cron: "17 17 * * *"
+    - cron: "17 20 * * *"
+
+# GitHub turns off schedules in a public repo after 60 days without commits; the last step keeps this one on.
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: blog-post
+  cancel-in-progress: false
+
+jobs:
+  write:
+    # A public repo: GitHub's machines are free here, with no monthly minute limit.
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - name: Research and publish
+        env:
+          SITE_URL: ${{ secrets.SITE_URL }}
+          BLOG_AUTOMATION_TOKEN: ${{ secrets.BLOG_AUTOMATION_TOKEN }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
+          REDO_PHOTOS: ${{ inputs.redo_photos }}
+          FORCE_POST: ${{ inputs.publish_now }}
+          SHARE_SLUG: ${{ inputs.share_slug }}
+          SHARE_ONLY: ${{ inputs.share_only != 'both' && inputs.share_only || '' }}
+          POST_STYLE: ${{ inputs.post_style != 'auto' && inputs.post_style || '' }}
+          REWRITE_SLUG: ${{ inputs.rewrite_slug }}
+          COMMENT_ON: ${{ inputs.comment_on }}
+          REWRITE_NOTE: ${{ inputs.rewrite_note }}
+          META_PAGE_TOKEN: ${{ secrets.META_PAGE_TOKEN }}
+          CHECK_FACEBOOK: ${{ inputs.check_facebook }}
+          # Every scheduled try but the last one of the day may leave the post to the next try.
+          LATER_TRY: ${{ github.event_name == 'schedule' && github.event.schedule != '17 20 * * *' }}
+        run: node run.mjs
+
+      - name: Keep the schedule on
+        if: always() && github.event_name == 'schedule'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api -X PUT "repos/${{ github.repository }}/actions/workflows/blog-post.yml/enable"
