@@ -1,0 +1,13 @@
+{
+  "name": "blog-automation",
+  "private": true,
+  "type": "module",
+  "description": "Writes a researched blog post every 3 days (GitHub Actions, .github/workflows/blog-post.yml).",
+  "scripts": {
+    "start": "node run.mjs",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
