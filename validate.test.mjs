@@ -245,3 +245,18 @@ test('the first post in the 3 weeks before a season is about that season', async
   // No posts at all yet: still seasonal inside a window.
   assert.equal(seasonFor([], new Date('2026-08-20T11:17:00Z')).name, 'fall');
 });
+
+test('CBD posts: hemp CBD only, with the legal and safety notes', () => {
+  const cbd = (extra) => post({ title: 'What research says about CBD and sleep', body: `## Intro\n\n${words(900)} ${extra}` });
+  const notes = 'Laws differ by state and country. The FDA has not approved CBD as a supplement. Talk to your doctor or pharmacist. Not for pregnancy or breastfeeding.';
+  assert.deepEqual(validatePost(cbd(notes), []), []);
+  const missing = validatePost(cbd(''), []).join();
+  for (const say of ['laws differ', 'FDA', 'doctor or pharmacist', 'pregnancy']) assert.match(missing, new RegExp(say));
+  assert.match(validatePost(cbd(`${notes} Delta-8 gummies and edibles can get you high.`), []).join(), /remove: delta-8, edibles/);
+  // Hemp seeds are food: no CBD notes needed.
+  assert.deepEqual(validatePost(post({ body: `## Intro\n\n${words(900)} hemp seeds` }), []), []);
+});
+
+test('CBD belongs only in standard posts', () => {
+  assert.match(validatePost(post({ summary: 'About CBD.' }), [], null, 'myth').join(), /only in standard posts/);
+});
