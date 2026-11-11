@@ -103,6 +103,27 @@ export function longestSentences(markdown, n = 3) {
 }
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+// CBD and cannabis (see prompt.md): hemp CBD only, never THC products, and always with the safety and legal notes.
+export const CANNABIS = /\b(cbd|cannabidiol|cannabis|marijuana|thc)\b/i;
+export const CANNABIS_BANNED = /\b(delta-?8|delta-?10|thca|thc-o|hhc|edibles?|get(?:ting)? high|recreational|dispensar(?:y|ies))\b/gi;
+export const CANNABIS_NOTES = [
+  [/\b(legal|laws?)\b/i, 'that the laws differ by state and country'],
+  [/\bfda\b/i, 'that the FDA has not approved CBD as a dietary supplement'],
+  [/\b(doctor|pharmacist)\b/i, 'that CBD can interact with medicines (talk to your doctor or pharmacist)'],
+  [/\bpregnan/i, 'that it is not for use during pregnancy or breastfeeding'],
+];
+
+export function cannabisProblems(text, style) {
+  if (!CANNABIS.test(text)) return [];
+  if (style !== 'standard') return ['CBD and cannabis belong only in standard posts; pick another theme'];
+  const errors = [];
+  const banned = [...new Set((text.match(CANNABIS_BANNED) ?? []).map((w) => w.toLowerCase()))];
+  if (banned.length) errors.push(`write only about hemp-derived CBD, never THC products or getting high; remove: ${banned.join(', ')}`);
+  const missing = CANNABIS_NOTES.filter(([re]) => !re.test(text)).map(([, say]) => say);
+  if (missing.length) errors.push(`a post that mentions CBD must say ${missing.join('; ')}`);
+  return errors;
+}
+
 // Counts words the way PHP's str_word_count does (runs of letters, ' and -).
 export const wordCount = (text) => (text.replace(/<[^>]*>/g, ' ').match(/[A-Za-z'-]+/g) ?? []).length;
 
@@ -135,6 +156,7 @@ export function validatePost(post, existingSlugs, allowedUrls = null, style = 's
   for (const word of BANNED) {
     if (new RegExp(`\\b${word}\\b`).test(text)) errors.push(`must not use "${word}"`);
   }
+  errors.push(...cannabisProblems(text, style));
   if (style === 'educational') {
     const found = EDU_BANNED.filter((w) => new RegExp(`\\b${w}\\b`).test(text));
     if (found.length) errors.push(`this is an educational post: no supplements, medicines or doses; remove: ${found.join(', ')}`);
