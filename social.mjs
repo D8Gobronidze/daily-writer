@@ -32,11 +32,34 @@ const shortUrl = (url) => String(url).replace(/^https?:\/\//, '').replace(/\/+$/
 // A weekly Health IQ test (kind: 'quiz') invites people to take it instead of reading.
 const isQuiz = (p) => p.kind === 'quiz';
 
-export const facebookMessage = (p) => [...adLine(p), p.title, '', p.summary, '', `${isQuiz(p) ? 'Take the quiz' : 'Read it here'}: ${p.url}`, '', hashtags(p)].join('\n');
+// The post's section headings ("## …"), from its HTML: what the reader will find inside.
+const decode = (t) => t.replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#0?39;|&rsquo;|&apos;/g, '’').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&nbsp;/g, ' ').trim();
+export const headingsOf = (html) => [...String(html ?? '').matchAll(/<h2[^>]*>([\s\S]*?)<\/h2>/g)].map((m) => decode(m[1])).filter(Boolean);
+
+const VERDICT = /^(myth|true|truth|partly true):\s*/i;
+// The closing "what to do" section is the same in every post: not a reason to click.
+const CLOSING = /^(what this means for you|how to safely|the bottom line|key takeaways|takeaways|summary)\b/i;
+const MAX_POINTS = 3;
+
+// Up to three teaser lines from the headings, and a question that invites comments. A "Myth or truth" post lists
+// its beliefs without the verdicts (the answer is the reason to read); other posts list the questions they answer.
+export function teaser(p) {
+  if (isQuiz(p)) return [];
+  const all = (p.headings ?? []).filter((h) => !CLOSING.test(h) && h.length <= 90);
+  const myths = all.filter((h) => VERDICT.test(h));
+  const lines = myths.length >= 2
+    ? ['Myth or truth?', ...myths.slice(0, MAX_POINTS).map((h) => `🤔 ${h.replace(VERDICT, '').replace(/[.]$/, '')}`)]
+    : all.length >= 2 ? ['In this post:', ...all.slice(0, MAX_POINTS).map((h) => `✅ ${h}`)] : [];
+  return lines.length ? [...lines, ''] : [];
+}
+const ask = (p) => (isQuiz(p) ? [] : [(p.headings ?? []).filter((h) => VERDICT.test(h)).length >= 2 ? '💬 Which one surprised you? Tell us in the comments.' : '💬 Have a question about this? Ask in the comments.', '']);
+
+export const facebookMessage = (p) =>
+  [...adLine(p), p.title, '', p.summary, '', ...teaser(p), `${isQuiz(p) ? 'Take the quiz' : 'Read it here'}: ${p.url}`, '', ...ask(p), hashtags(p)].join('\n');
 
 // Instagram never makes links in a caption clickable, so the post's address is written out in full.
 export const instagramCaption = (p) =>
-  [...adLine(p), p.title, '', p.summary, '', isQuiz(p) ? `Take the quiz at ${shortUrl(p.url)} 🧠` : `Read the full post at ${shortUrl(p.url)} 🌿`, '', hashtags(p)].join('\n');
+  [...adLine(p), p.title, '', p.summary, '', ...teaser(p), isQuiz(p) ? `Take the quiz at ${shortUrl(p.url)} 🧠` : `Read the full post at ${shortUrl(p.url)} 🌿`, '', ...ask(p), hashtags(p)].join('\n');
 
 // True when Facebook or Instagram published the post (an id, not "failed: …" or "skipped: …").
 export const wentOut = (result) => ['facebook', 'instagram'].some((k) => typeof result?.[k] === 'string' && !/^(failed|skipped)/.test(result[k]));
@@ -77,7 +100,7 @@ async function comment(id, post, opts) {
 }
 
 /**
- * Shares one post. `post`: {title, summary, url, imageUrl (absolute JPEG or null), tags}.
+ * Shares one post. `post`: {title, summary, url, imageUrl (absolute JPEG or null), tags, headings (optional)}.
  * Returns what happened per network; a failure on one never stops the other.
  */
 export async function sharePost(post, { token = process.env.META_PAGE_TOKEN, fetchFn = fetch, wait = (ms) => new Promise((r) => setTimeout(r, ms)), only = '' } = {}) {
