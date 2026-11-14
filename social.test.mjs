@@ -84,10 +84,11 @@ test('a user or System User token is swapped for the Example Page token', async 
   assert.equal(m.calls.find((c) => c.path === '/615/feed').params.access_token, 'p-example');
 });
 
-test('a post about one brand product starts with the #ad commission note; others have none', () => {
+test('a post about one brand product starts with #ad; others have none', () => {
   const product = { ...post, product: 'organixx/magnesium-7' };
   assert.ok(facebookMessage(product).startsWith(AD_NOTE));
   assert.ok(instagramCaption(product).startsWith(AD_NOTE));
+  assert.ok(!/commission/i.test(facebookMessage(product) + instagramCaption(product)));
   assert.ok(!facebookMessage(post).includes('#ad'));
   assert.ok(!instagramCaption(post).includes('#ad'));
 });

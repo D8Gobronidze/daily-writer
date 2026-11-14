@@ -18,8 +18,8 @@ async function graph(path, { token, fetchFn, method = 'GET', params = {} }) {
 // "#gut-health" → "#guthealth": Instagram hashtags can't contain hyphens.
 const hashtag = (t) => `#${String(t).replace(/[^a-z0-9]/gi, '')}`;
 
-// A post about one brand's product earns us a commission: say so first, before anything else (FTC).
-export const AD_NOTE = '#ad We earn a commission if you buy through the links in this post.';
+// A post about one brand's product has affiliate links: mark it first, before anything else (FTC). Owner: never the word "commission".
+export const AD_NOTE = '#ad';
 const adLine = (p) => (p.product ? [AD_NOTE, ''] : []);
 
 // The site's name, from SITE_URL: "https://example.com" → "example" (Page name and first hashtag).
