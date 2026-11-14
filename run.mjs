@@ -6,7 +6,7 @@ import { readFile } from 'node:fs/promises';
 import { LIGHT_MODELS, askJson } from './gemini.mjs';
 import { findPapers, mythNotes, notesFrom, researchBeliefs } from './sources.mjs';
 import { findPhoto } from './photos.mjs';
-import { checkToken, commentOn, deletePosts, sharePost, wentOut } from './social.mjs';
+import { checkToken, commentOn, deletePosts, headingsOf, sharePost, wentOut } from './social.mjs';
 import { pingIndexNow } from './indexnow.mjs';
 import { QUIZ_SCHEMA, QUIZ_SYSTEM, builtInTopics, isQuizDue, quizPayload, quizProblems, quizPrompt, quizShare } from './quiz.mjs';
 import { EDU, MYTH, beliefProblem, isDue, plainWords, seasonFor, seasonNote, slugsFromLlms, styleFor, validatePost, MIN_WORDS, MAX_WORDS } from './validate.mjs';
@@ -186,7 +186,7 @@ Write the post as JSON:
 - title: ${style === 'myth' ? 'starts with "Myth or truth:" and names the theme, under 70 characters (e.g. "Myth or truth: 4 beliefs about breakfast").' : `specific and useful, no clickbait, short enough to fit two lines on a phone: under ${style === 'educational' ? 60 : 70} characters (e.g. "Omega-3 and your heart: what trials show").`}
 - slug: lowercase words joined by hyphens, from the title.
 - kind: ${style === 'standard' ? '"news" if it is about research from the last 6 months, otherwise "guide".' : '"guide".'}
-- summary: one or two ${style === 'standard' ? '' : 'short, simple '}sentences, under 300 characters, for the blog list and search results.
+- summary: one or two short, simple sentences, under 300 characters, for the blog list, search results and social posts. Everyday words only, no lab or study terms (say "vitamin D blood levels", not "serum 25-hydroxyvitamin D"; "how well the body absorbs it", not "bioavailability"). Say what the reader will learn.
 - body: Markdown, ${STYLE[style].body} Do not repeat the title as a heading and do not include a sources section (the site adds one).
 - sources: 3 to 8 of the study URLs from the notes you relied on, each with a short plain title.
 - categorySlug: one slug from the category list.
@@ -265,7 +265,7 @@ async function share(slug) {
   try {
     const p = JSON.parse(await siteFetch(`/api/posts/${encodeURIComponent(slug)}`));
     const image = p.cover?.imageUrl ? (p.cover.imageUrl.startsWith('/') ? site + p.cover.imageUrl : p.cover.imageUrl) : null;
-    const result = await sharePost({ title: p.title, summary: p.summary, url: p.url, imageUrl: image, tags: p.tags ?? [], product: p.product ?? null }, { only: (process.env.SHARE_ONLY ?? '').trim() });
+    const result = await sharePost({ title: p.title, summary: p.summary, url: p.url, imageUrl: image, tags: p.tags ?? [], product: p.product ?? null, headings: headingsOf(p.bodyHtml) }, { only: (process.env.SHARE_ONLY ?? '').trim() });
     console.log(`Shared ${slug}: ${JSON.stringify(result)}`);
     if (wentOut(result) && !process.env.SHARE_ONLY) await siteFetch(`/api/automation/shared/${encodeURIComponent(slug)}`, { method: 'PUT', body: '{}' });
   } catch (err) {

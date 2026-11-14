@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { AD_NOTE, NEEDED_PERMISSIONS, checkToken, commentOn, deletePosts, facebookMessage, instagramCaption, sharePost, wentOut } from './social.mjs';
+import { AD_NOTE, NEEDED_PERMISSIONS, checkToken, commentOn, deletePosts, facebookMessage, headingsOf, instagramCaption, sharePost, teaser, wentOut } from './social.mjs';
 
 process.env.SITE_URL = 'https://example.com';
 
@@ -70,10 +70,10 @@ test('no token: nothing is sent', async () => {
 test('texts', () => {
   assert.equal(
     facebookMessage(post),
-    'Omega-3 and your heart\n\nWhat recent trials found.\n\nRead it here: https://example.com/blog/omega-3/\n\n#example #wellness #heart #dailybasics',
+    'Omega-3 and your heart\n\nWhat recent trials found.\n\nRead it here: https://example.com/blog/omega-3/\n\n💬 Have a question about this? Ask in the comments.\n\n#example #wellness #heart #dailybasics',
   );
   // Instagram doesn't make caption links clickable, so the address is spelled out to type or copy.
-  assert.match(instagramCaption(post), /Read the full post at example\.com\/blog\/omega-3 🌿\n\n#example #wellness #heart #dailybasics$/);
+  assert.match(instagramCaption(post), /Read the full post at example\.com\/blog\/omega-3 🌿\n\n💬 Have a question about this\? Ask in the comments\.\n\n#example #wellness #heart #dailybasics$/);
   assert.ok(!instagramCaption(post).includes('link in bio'));
 });
 
@@ -187,4 +187,34 @@ test('deletePosts removes Facebook posts and reports the rest', async () => {
   assert.deepEqual(out, { 'facebook:615_7': 'deleted', 'facebook:615_8': 'failed: Meta DELETE /615_8 → gone', 'instagram:ig_1': 'skipped: delete it in the Instagram app' });
   assert.equal(m.calls.find((c) => c.path === '/615_7').params.access_token, 'p-example');
   assert.deepEqual(await deletePosts('  ', { token: 'user', fetchFn: m.fetchFn }), {});
+});
+
+test('headingsOf reads the section headings from a post\'s HTML', () => {
+  assert.deepEqual(headingsOf('<p>x</p><h2 id="a">Why do levels drop?</h2><p>y</p><h2>Tom &amp; Ann&#39;s <em>tips</em></h2>'), ['Why do levels drop?', 'Tom & Ann’s tips']);
+  assert.deepEqual(headingsOf(undefined), []);
+});
+
+test('a post lists up to three questions it answers, skips the closing section, and asks for comments', () => {
+  const p = { ...post, headings: ['Why do levels drop in winter?', 'Does it help with mood?', 'Can it boost performance?', 'What about children?', 'How to safely prepare your routine'] };
+  const fb = facebookMessage(p);
+  assert.match(fb, /In this post:\n✅ Why do levels drop in winter\?\n✅ Does it help with mood\?\n✅ Can it boost performance\?\n\nRead it here: /);
+  assert.ok(!fb.includes('children') && !fb.includes('How to safely'));
+  assert.match(fb, /💬 Have a question about this\? Ask in the comments\./);
+  assert.match(instagramCaption(p), /In this post:\n✅ Why do levels drop in winter\?/);
+  assert.ok(fb.indexOf(p.summary) < fb.indexOf('In this post:'));
+});
+
+test('a myth post teases its beliefs without giving the verdicts away', () => {
+  const p = { ...post, headings: ['Myth: Coffee dries you out.', 'True: Food counts toward your water', 'Partly true: Thirst is a late sign', 'What this means for you'] };
+  const fb = facebookMessage(p);
+  assert.match(fb, /Myth or truth\?\n🤔 Coffee dries you out\n🤔 Food counts toward your water\n🤔 Thirst is a late sign\n/);
+  assert.ok(!/Myth:|True:|Partly true:/.test(fb));
+  assert.match(fb, /Which one surprised you\?/);
+});
+
+test('no headings (or a quiz): the post reads as before, with no empty teaser', () => {
+  assert.deepEqual(teaser(post), []);
+  assert.deepEqual(teaser({ ...post, headings: ['Only one'] }), []);
+  assert.ok(!facebookMessage({ ...post, kind: 'quiz', headings: ['A?', 'B?'] }).includes('In this post'));
+  assert.ok(!facebookMessage({ ...post, kind: 'quiz' }).includes('💬'));
 });
